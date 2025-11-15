@@ -1,4 +1,5 @@
 import os
+from config import *
 
 
 def get_files_info(working_directory, directory="."):
