@@ -7,25 +7,67 @@ from google.genai import types
 from prompts import system_prompt
 from call_function import call_function, available_functions
 from config import MAX_ITERS
+from voice import listen, speak
 
 
 def main():
     load_dotenv()
 
     verbose = "--verbose" in sys.argv
+    voice_mode = "--voice" in sys.argv
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
+
     args = []
     for arg in sys.argv[1:]:
         if not arg.startswith("--"):
             args.append(arg)
-
-    if not args:
+    
+    if not args and not voice_mode:
         print("AI Code Assistant")
         print('\nUsage: python main.py "your prompt here" [--verbose]')
         print('Example: python main.py "How do I fix the calculator?"')
         sys.exit(1)
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    client = genai.Client(api_key=api_key)
+    if voice_mode:
+        print("Voice mode: say 'exit' or 'quit' to stop.")
+        messages = []
+        while True:
+            try:
+                print("Listening...")
+                user_text = listen()
+            except Exception as e:
+                print("Microphone/STT error:", e)
+                break
+            if not user_text:
+                continue
+
+            print("You:", user_text)
+            if user_text.strip().lower() in ("exit", "quit", "stop"):
+                print("Exiting voice mode.")
+                break
+
+            messages.append(types.Content(role="user", parts=[types.Part(text=user_text)]))
+
+            # Loop until model returns a textual response, as current generate_content() may
+            # use function-calls and re-iterate to synthesize final text.
+            iters = 0
+            while True:
+                iters += 1
+                if iters > MAX_ITERS:
+                    print(f"Maximum iterations ({MAX_ITERS}) reached.")
+                    break
+                try:
+                    final_response = generate_content(client, messages, verbose)
+                    if final_response:
+                        print("AI:", final_response)
+                        speak(final_response)
+                        break
+                except Exception as e:
+                    print("Error in generate_content:", e)
+                    break
+        sys.exit(0)
 
     user_prompt = " ".join(args)
 
@@ -46,7 +88,7 @@ def main():
         try:
             final_response = generate_content(client, messages, verbose)
             if final_response:
-                print("final response:")
+                print("Final response:")
                 print(final_response)
                 break
         except Exception as e:
